@@ -3,8 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --swarm-gold: #FFB800;
+  --swarm-yellow: #FFD700;
+  --swarm-light: #FFE55C;
+  --swarm-dark: #CC9600;
+  --glow-spread: 35px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -18,4 +21,115 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-gradient-to-b from-surface-dark via-surface to-surface-dark text-white;
+  }
+
+  .gradient-background {
+    @apply fixed inset-0 z-[-1] bg-surface-dark;
+    background-image: radial-gradient(circle at top center, rgba(255, 184, 0, 0.15), transparent 80%);
+  }
+}
+
+@layer components {
+  .glow-button {
+    @apply px-6 py-3 rounded-lg border border-swarm-gold text-swarm-gold relative overflow-hidden
+           transition-all duration-300 hover:bg-swarm-gold hover:text-black font-medium;
+    box-shadow: 0 0 var(--glow-spread) rgba(255, 184, 0, 0.2);
+  }
+
+  .glow-button:hover {
+    box-shadow: 0 0 var(--glow-spread) rgba(255, 184, 0, 0.4);
+  }
+
+  .nav-island {
+    @apply fixed top-6 left-1/2 -translate-x-1/2 z-50 
+           bg-surface/80 backdrop-blur-md rounded-full
+           border border-swarm-gold/20 px-12 py-4 w-[90%] max-w-6xl
+           transition-all duration-300;
+    box-shadow: 0 0 var(--glow-spread) rgba(255, 184, 0, 0.1);
+  }
+
+  .card {
+    @apply bg-surface/40 backdrop-blur-sm rounded-xl border border-white/10
+           p-8 transition-all duration-300 hover:border-swarm-gold/20
+           opacity-0 animate-fade-up;
+    box-shadow: 0 0 20px rgba(255, 184, 0, 0.05);
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-swarm-gold to-swarm-light bg-clip-text text-transparent;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-lg bg-surface-light border border-white/10
+           focus:border-swarm-gold/50 focus:outline-none transition-colors
+           text-white placeholder-white/40;
+  }
+
+  .tab-button {
+    @apply px-4 py-2 rounded-lg transition-colors duration-300
+           hover:bg-surface-light/50;
+  }
+
+  .tab-button.active {
+    @apply bg-surface-light text-swarm-gold;
+  }
+
+  .stat-card {
+    @apply flex flex-col items-center justify-center p-8
+           bg-surface-light/50 rounded-xl border border-white/5
+           transition-all duration-300 hover:border-swarm-gold/20;
+    box-shadow: 0 0 20px rgba(255, 184, 0, 0.05);
+  }
+
+  .feature-icon {
+    @apply w-12 h-12 rounded-full bg-swarm-gold/10 
+           flex items-center justify-center mb-4;
+  }
+}
+
+/* Custom Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.float-animation {
+  animation: float 3s ease-in-out infinite;
+}
+
+[data-animate] {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+[data-animate].animate-in {
+  animation: fadeUp 0.5s ease-out forwards;
+}
+
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scroll-section {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.6s ease-out;
+}
+
+.scroll-section.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
