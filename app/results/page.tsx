@@ -195,17 +195,6 @@ const MetricSection = ({ title, subtitle, children }: {
   </motion.div>
 );
 
-const AnalysisCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <Card hover={true}>
-    <h3 className="text-lg font-semibold mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-      {title}
-    </h3>
-    <div className="text-white">
-      {children}
-    </div>
-  </Card>
-);
-
 type Tab = 'overview' | 'quality' | 'technical' | 'conversation' | 'errors' | 'business' | 'script';
 
 export default function ResultsPage() {

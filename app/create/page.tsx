@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Navigation from '../components/Navigation';
-import HoneycombPattern from '../components/HoneycombPattern';
 import { database } from '../../lib/database';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';

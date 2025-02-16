@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Navigation from './components/Navigation';
 import { useAuth } from './context/AuthContext';
 import { FeatureCard, StatCard } from './components/Card';
-import Link from 'next/link';
 
 const GradientLight = () => (
   <div className="fixed inset-0 pointer-events-none">
@@ -22,7 +21,6 @@ const GradientLight = () => (
 export default function Home() {
   const router = useRouter();
   const { user, signInWithGoogle } = useAuth();
-  const [isHovered, setIsHovered] = useState(false);
 
   const handleStartTesting = () => {
     if (user) {
@@ -138,7 +136,7 @@ export default function Home() {
               <p className="text-xl text-white/70 mb-8 leading-relaxed">
                 Swarm is the next generation platform for testing voice AI systems at scale. 
                 Our platform enables you to simulate thousands of concurrent conversations, 
-                analyze performance in real-time, and get actionable insights to improve your AI's capabilities.
+                analyze performance in real-time, and get actionable insights to improve your AI&apos;s capabilities.
               </p>
               <motion.button
                 className="px-12 py-4 rounded-xl bg-gradient-to-r from-primary via-secondary to-accent text-black font-semibold text-lg"
