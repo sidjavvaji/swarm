@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Navigation from '../components/Navigation';
 import HoneycombPattern from '../components/HoneycombPattern';
+import { database } from '../../lib/database';
+import { useAuth } from '../context/AuthContext';
+import { useRouter } from 'next/navigation';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface TestConfig {
   basics: {
@@ -30,7 +34,7 @@ interface TestConfig {
     latency: number;
     packetLoss: number;
     bandwidth: number;
-    stability: string;
+    stability: 'stable' | 'variable' | 'poor';
   };
   scenario: {
     template: string;
@@ -171,11 +175,13 @@ const Slider = ({ label, min, max, value, onChange }: SliderProps) => (
 );
 
 export default function CreateTest() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [config, setConfig] = useState<TestConfig>({
     basics: {
       name: '',
-      simultaneous: 100,
-      duration: 60,
+      simultaneous: 1,
+      duration: 2,
       environment: 'staging'
     },
     customer: {
@@ -196,7 +202,7 @@ export default function CreateTest() {
       latency: 0,
       packetLoss: 0,
       bandwidth: 1000,
-      stability: 'stable'
+      stability: 'stable' as const
     },
     scenario: {
       template: '',
@@ -213,9 +219,83 @@ export default function CreateTest() {
       clarityThreshold: 90
     }
   });
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmationText, setConfirmationText] = useState('');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  const handleStartTest = () => {
-    console.log('Starting test with config:', config);
+  const validateConfig = () => {
+    const errors: string[] = [];
+
+    // Validate basics
+    if (!config.basics.name) errors.push('Test name is required');
+    if (config.basics.simultaneous < 1) errors.push('Must have at least 1 simultaneous conversation');
+    if (config.basics.duration < 1) errors.push('Duration must be at least 1 minute');
+    if (!config.basics.environment) errors.push('Environment must be selected');
+
+    // Validate customer settings
+    if (config.customer.accents.length === 0) errors.push('At least one accent type must be selected');
+    if (config.customer.pace.length === 0) errors.push('At least one speaking pace must be selected');
+    if (config.customer.noise.length === 0) errors.push('At least one background noise type must be selected');
+    if (config.customer.emotions.length === 0) errors.push('At least one emotion type must be selected');
+
+    // Validate conversation settings
+    if (!config.conversation.industry) errors.push('Industry/Use Case is required');
+    if (config.conversation.complexity < 1) errors.push('Complexity level must be set');
+    if (config.conversation.maxTurns < 1) errors.push('Maximum turns must be set');
+    if (config.conversation.responseThreshold < 100) errors.push('Response threshold must be at least 100ms');
+
+    // Validate scenario settings
+    if (!config.scenario.template) errors.push('Prompt template is required');
+    if (config.scenario.edgeCaseFreq < 0) errors.push('Edge case frequency must be set');
+    if (config.scenario.errorRate < 0) errors.push('Error injection rate must be set');
+
+    return errors;
+  };
+
+  const handleStartTest = async () => {
+    const errors = validateConfig();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+
+    setShowConfirmation(true);
+  };
+
+  const handleConfirmStart = async () => {
+    if (confirmationText.toLowerCase() !== 'create test') {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      if (!user) {
+        throw new Error('User must be logged in to create a test');
+      }
+
+      // Create test configuration
+      const testConfig = await database.createTestConfig(config);
+      
+      // Create simulation
+      const simulation = await database.createSimulation(testConfig.id);
+
+      // Show success message
+      setShowSuccess(true);
+      
+      // Wait for 2 seconds before redirecting
+      setTimeout(() => {
+        router.push(`/results?simulation=${simulation.id}`);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error in handleConfirmStart:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      setValidationErrors([`Failed to start test: ${errorMessage}`]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -250,8 +330,8 @@ export default function CreateTest() {
                 />
                 <Slider
                   label="Simultaneous Conversations"
-                  min={100}
-                  max={1000}
+                  min={1}
+                  max={10}
                   value={config.basics.simultaneous}
                   onChange={value => setConfig({
                     ...config,
@@ -361,18 +441,8 @@ export default function CreateTest() {
                     conversation: { ...config.conversation, maxTurns: Number(e.target.value) }
                   })}
                 />
-                <InputField
-                  label="Response Time Threshold (ms)"
-                  type="number"
-                  placeholder="e.g., 2000"
-                  value={config.conversation.responseThreshold}
-                  onChange={e => setConfig({
-                    ...config,
-                    conversation: { ...config.conversation, responseThreshold: Number(e.target.value) }
-                  })}
-                />
               </ConfigSection>
-
+              
               <ConfigSection title="Network Conditions">
                 <Slider
                   label="Latency (ms)"
@@ -413,7 +483,7 @@ export default function CreateTest() {
                   value={config.network.stability}
                   onChange={e => setConfig({
                     ...config,
-                    network: { ...config.network, stability: e.target.value }
+                    network: { ...config.network, stability: e.target.value as 'stable' | 'variable' | 'poor' }
                   })}
                 />
               </ConfigSection>
@@ -493,16 +563,103 @@ export default function CreateTest() {
               </ConfigSection>
             </div>
 
-            <div className="mt-12 flex justify-end">
+            {/* Create Test Button */}
+            <div className="mt-8 flex justify-center">
               <motion.button
+                onClick={handleStartTest}
                 className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary via-secondary to-accent text-black font-semibold text-lg"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={handleStartTest}
               >
-                Start Test
+                Create Test
               </motion.button>
             </div>
+
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <div className="fixed top-24 right-4 z-50">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 max-w-md">
+                  <h4 className="text-red-400 font-medium mb-2">Please fix the following errors:</h4>
+                  <ul className="list-disc list-inside text-sm text-red-300">
+                    {validationErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Confirmation Dialog */}
+            {showConfirmation && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+                <div className="bg-surface-light p-6 rounded-2xl max-w-md w-full mx-4">
+                  <h3 className="text-xl font-semibold mb-4 gradient-text">Confirm Test Creation</h3>
+                  <p className="text-white/70 mb-4">
+                    Please type "Create Test" to confirm you want to create the test with the current configuration. This action may be computationally expensive.
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmationText}
+                    onChange={(e) => setConfirmationText(e.target.value)}
+                    placeholder="Type 'Create Test'"
+                    className="w-full px-4 py-2 rounded-xl bg-black/40 border border-white/30 text-white mb-4"
+                  />
+                  <div className="flex justify-end space-x-4">
+                    <button
+                      onClick={() => {
+                        setShowConfirmation(false);
+                        setConfirmationText('');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmStart}
+                      disabled={confirmationText.toLowerCase() !== 'create test'}
+                      className={`px-4 py-2 rounded-xl ${
+                        confirmationText.toLowerCase() === 'create test'
+                          ? 'bg-gradient-to-r from-primary via-secondary to-accent text-black'
+                          : 'bg-white/5 text-white/30'
+                      }`}
+                    >
+                      Create Test
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isLoading && <LoadingScreen />}
+
+            {showSuccess && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+                <motion.div
+                  className="bg-surface-light p-8 rounded-2xl max-w-md w-full mx-4"
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", duration: 0.5 }}
+                >
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.2 }}
+                      >
+                        <svg className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </motion.div>
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2 gradient-text">Test Created Successfully!</h3>
+                    <p className="text-white/70 mb-4">
+                      Your test has been initiated. Redirecting you to the results page...
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+            )}
           </motion.div>
         </div>
       </div>

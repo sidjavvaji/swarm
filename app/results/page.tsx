@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Navigation from '../components/Navigation';
 import { Card } from '../components/Card';
+import { database } from '../../lib/database';
+import { useAuth } from '../context/AuthContext';
+import type { VoiceConversation } from '../../types/database';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface TestResult {
   // Basic Info
@@ -113,132 +117,233 @@ interface TestResult {
   };
 }
 
-const mockResult: TestResult = {
-  id: "TEST-123",
-  startTime: "2024-03-15T10:00:00Z",
-  endTime: "2024-03-15T10:05:23Z",
-  duration: "5m 23s",
-  callSid: "CA123456789",
-  completionStatus: "Completed",
-  systemPrompt: "You are a restaurant order assistant...",
-  conversationType: "Restaurant Order",
+interface Message {
+  role: 'assistant' | 'user';
+  content: string;
+  timestamp: string;
+}
 
-  messages: [
-    {
-      speakerType: "AI",
-      text: "Welcome to our restaurant! How can I help you today?",
-      timestamp: "2024-03-15T10:00:00Z",
-      sequenceNumber: 1,
-      responseTime: 150,
-      tokenCount: 12,
-      messageType: "greeting",
-      sentimentScore: 0.8
-    },
-    // Add more messages...
-  ],
+interface EntityExtraction {
+  entity?: string;
+  value?: string;
+}
 
+interface ErrorDetail {
+  type: string;
+  message: string;
+  timestamp: string;
+}
+
+interface TransformedMessage {
+  speakerType: string;
+  text: string;
+  timestamp: string;
+  responseTime: number;
+  tokenCount: number;
+  messageType: string;
+  sentimentScore: number;
+}
+
+interface IntentClassification {
+  [key: string]: number;
+}
+
+interface SemanticAnalysis {
+  intentClassification: IntentClassification;
+  entityExtraction: string[];
+  topicClassification: string[];
+  semanticRoleLabels: Record<string, string>;
+  conversationFlow: string[];
+}
+
+interface TransformedResult {
+  id: string;
+  startTime: string;
+  endTime: string;
+  duration: string;
+  callSid: string;
+  completionStatus: string;
+  conversationType: string;
+  messages: TransformedMessage[];
   technical: {
     latencyStats: {
-      avg: 180,
-      min: 120,
-      max: 350,
-      p95: 250
-    },
+      avg: number;
+      min: number;
+      max: number;
+      p95: number;
+    };
     tokenUsage: {
-      total: 1250,
-      perMessage: 25,
-      efficiency: 0.85
-    },
+      total: number;
+      perMessage: number;
+      efficiency: number;
+    };
     errorCounts: {
-      total: 2,
-      byType: {
-        "timeout": 1,
-        "transcription": 1
-      }
-    },
-    modelTemperature: 0.7,
-    memoryUsage: 256,
-    avgResponseTime: 180,
-    apiErrors: ["Timeout at 10:02:15"]
-  },
-
+      total: number;
+      byType: Record<string, number>;
+    };
+    modelTemperature: number;
+    memoryUsage: number;
+    avgResponseTime: number;
+    apiErrors: string[];
+  };
   quality: {
-    coherenceScore: 0.92,
-    taskCompletion: 1.0,
-    contextRetention: 0.95,
-    naturalLanguage: 0.88,
-    appropriateness: 0.96,
-    engagement: 0.90,
-    errorRecovery: 0.85,
-    overallQuality: 0.92
-  },
-
+    coherenceScore: number;
+    taskCompletion: number;
+    contextRetention: number;
+    naturalLanguage: number;
+    appropriateness: number;
+    engagement: number;
+    errorRecovery: number;
+    overallQuality: number;
+  };
+  semantic: SemanticAnalysis;
+  errors: {
+    type: string;
+    severity: string;
+    description: string;
+    recoveryAttempt: string;
+    recoverySuccess: boolean;
+    timestamp: string;
+  }[];
   taskSpecific: {
-    orderAccuracy: 0.98,
-    requiredClarifications: 2,
-    completionTime: 323,
-    validationResults: true,
-    specialRequests: 1,
-    menuKnowledge: 0.95,
-    upsellAttempts: 2
-  },
-
-  errors: [
-    {
-      type: "timeout",
-      severity: "minor",
-      description: "Response delayed beyond threshold",
-      recoveryAttempt: "Retry with reduced context",
-      recoverySuccess: true,
-      timestamp: "2024-03-15T10:02:15Z"
-    }
-  ],
-
-  semantic: {
-    intentClassification: {
-      "order": 0.6,
-      "inquiry": 0.3,
-      "clarification": 0.1
-    },
-    entityExtraction: ["menu_item", "quantity", "special_request"],
-    topicClassification: ["food_ordering", "menu_inquiry"],
-    semanticRoleLabels: {
-      "agent": "restaurant_assistant",
-      "customer": "diner"
-    },
-    conversationFlow: ["greeting", "menu_inquiry", "order_placement", "confirmation"]
-  },
-
-  trainingFeedback: [
-    {
-      type: "response_improvement",
-      suggestion: "Add more menu item suggestions",
-      priority: "medium",
-      implementationStatus: "pending"
-    }
-  ],
-
-  context: {
-    updates: [
-      {
-        timestamp: "2024-03-15T10:00:30Z",
-        type: "order_item",
-        value: "margherita_pizza"
-      }
-    ],
-    retentionScore: 0.95,
-    validPeriods: [
-      {
-        start: "2024-03-15T10:00:00Z",
-        end: "2024-03-15T10:05:23Z"
-      }
-    ]
-  }
-};
+    orderAccuracy: number;
+    requiredClarifications: number;
+    completionTime: number;
+    menuKnowledge: number;
+    specialRequests: number;
+    upsellAttempts: number;
+    validationResults: boolean;
+  };
+}
 
 export default function Results() {
   const [activeTab, setActiveTab] = useState('overview');
-  const result = mockResult; // Replace with actual data fetching
+  const [results, setResults] = useState<any[]>([]);  // Still using any for results until we have complete types
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchResults = async () => {
+      if (!user) return;
+
+      try {
+        const fetchedResults = await database.getTestResults('all');
+        console.log('Raw results from database:', fetchedResults);
+        setResults(fetchedResults);
+      } catch (error) {
+        console.error('Error fetching results:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchResults();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black">
+        <Navigation />
+        <LoadingScreen />
+      </main>
+    );
+  }
+
+  if (!results || results.length === 0) {
+    return (
+      <main className="min-h-screen bg-black">
+        <Navigation />
+        <div className="pt-24 px-4">
+          <div className="text-center">No results available</div>
+        </div>
+      </main>
+    );
+  }
+
+  const result = results[0];
+  console.log('Processing result:', result);
+
+  // Transform database data to match the UI structure
+  const transformedResult: TransformedResult = {
+    id: result.id,
+    startTime: result.created_at,
+    endTime: result.updated_at,
+    duration: result.duration ? `${result.duration}s` : 'N/A',
+    callSid: result.call_sid,
+    completionStatus: result.status,
+    conversationType: "Restaurant Order",
+
+    messages: ((result.transcript?.messages || []) as Message[]).map((msg: Message): TransformedMessage => ({
+      speakerType: msg.role,
+      text: msg.content,
+      timestamp: msg.timestamp,
+      responseTime: result?.technical_metrics?.[0]?.avg_latency_ms || 0,
+      tokenCount: result?.technical_metrics?.[0]?.tokens_per_message || 0,
+      sentimentScore: result?.quality_metrics?.[0]?.sentiment_score || 0.5,
+      messageType: msg.role === 'assistant' ? 'response' : 'user_input'
+    })),
+
+    technical: {
+      latencyStats: {
+        avg: result?.technical_metrics?.[0]?.avg_latency_ms || 0,
+        min: result?.technical_metrics?.[0]?.min_latency_ms || 0,
+        max: result?.technical_metrics?.[0]?.max_latency_ms || 0,
+        p95: result?.technical_metrics?.[0]?.p95_latency_ms || 0
+      },
+      tokenUsage: {
+        total: result?.technical_metrics?.[0]?.total_tokens || 0,
+        perMessage: result?.technical_metrics?.[0]?.tokens_per_message || 0,
+        efficiency: result?.technical_metrics?.[0]?.token_efficiency || 0
+      },
+      errorCounts: {
+        total: (result?.error_details || []).length,
+        byType: {}
+      },
+      modelTemperature: result?.technical_metrics?.[0]?.model_temperature || 0,
+      memoryUsage: result?.technical_metrics?.[0]?.memory_usage_mb || 0,
+      avgResponseTime: result?.technical_metrics?.[0]?.avg_latency_ms || 0,
+      apiErrors: []
+    },
+
+    quality: {
+      coherenceScore: result?.quality_metrics?.[0]?.coherence_score || 0,
+      taskCompletion: result?.quality_metrics?.[0]?.task_completion_score || 0,
+      contextRetention: result?.quality_metrics?.[0]?.context_retention_score || 0,
+      naturalLanguage: result?.quality_metrics?.[0]?.natural_language_score || 0,
+      appropriateness: result?.quality_metrics?.[0]?.appropriateness_score || 0,
+      engagement: result?.quality_metrics?.[0]?.engagement_score || 0,
+      errorRecovery: result?.quality_metrics?.[0]?.error_recovery_score || 0,
+      overallQuality: result?.quality_metrics?.[0]?.overall_quality_score || 0
+    },
+
+    semantic: {
+      intentClassification: (result?.analysis_results?.[0]?.intent_classification || {}) as IntentClassification,
+      entityExtraction: ((result?.analysis_results?.[0]?.entity_extraction || []) as EntityExtraction[])
+        .map(e => e.entity || e.value || ''),
+      topicClassification: (result?.analysis_results?.[0]?.topic_classification || []) as string[],
+      semanticRoleLabels: (result?.analysis_results?.[0]?.semantic_role_labels || {}) as Record<string, string>,
+      conversationFlow: (result?.analysis_results?.[0]?.conversation_flow || []) as string[]
+    } as SemanticAnalysis,
+
+    errors: (result?.error_details || []).map((error: any) => ({
+      type: error.type,
+      severity: result.error_severity || 'unknown',
+      description: error.message,
+      recoveryAttempt: result.recovery_attempt || 'none',
+      recoverySuccess: result.recovery_success || false,
+      timestamp: error.timestamp
+    })),
+
+    taskSpecific: {
+      orderAccuracy: result?.quality_metrics?.[0]?.order_accuracy || 0,
+      requiredClarifications: result?.quality_metrics?.[0]?.required_clarifications || 0,
+      completionTime: result?.quality_metrics?.[0]?.completion_time || 0,
+      menuKnowledge: result?.quality_metrics?.[0]?.menu_knowledge || 0,
+      specialRequests: result?.quality_metrics?.[0]?.special_requests || 0,
+      upsellAttempts: result?.quality_metrics?.[0]?.upsell_attempts || 0,
+      validationResults: true
+    }
+  };
 
   return (
     <main className="min-h-screen bg-black">
@@ -274,19 +379,19 @@ export default function Results() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <h3 className="text-sm text-white/70">Test ID</h3>
-                <p className="text-lg font-semibold gradient-text">{result.id}</p>
+                <p className="text-lg font-semibold gradient-text">{transformedResult.id}</p>
               </div>
               <div>
                 <h3 className="text-sm text-white/70">Duration</h3>
-                <p className="text-lg font-semibold gradient-text">{result.duration}</p>
+                <p className="text-lg font-semibold gradient-text">{transformedResult.duration}</p>
               </div>
               <div>
                 <h3 className="text-sm text-white/70">Status</h3>
-                <p className="text-lg font-semibold gradient-text">{result.completionStatus}</p>
+                <p className="text-lg font-semibold gradient-text">{transformedResult.completionStatus}</p>
               </div>
               <div>
                 <h3 className="text-sm text-white/70">Type</h3>
-                <p className="text-lg font-semibold gradient-text">{result.conversationType}</p>
+                <p className="text-lg font-semibold gradient-text">{transformedResult.conversationType}</p>
               </div>
             </div>
           </Card>
@@ -294,16 +399,16 @@ export default function Results() {
           {/* Main Content */}
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <QualityMetricsCard quality={result.quality} />
-              <TechnicalMetricsCard technical={result.technical} />
-              <TaskSpecificCard taskSpecific={result.taskSpecific} />
+              <QualityMetricsCard quality={transformedResult.quality} />
+              <TechnicalMetricsCard technical={transformedResult.technical} />
+              <TaskSpecificCard taskSpecific={transformedResult.taskSpecific} />
             </div>
           )}
 
           {activeTab === 'messages' && (
             <Card>
               <div className="space-y-4">
-                {result.messages.map((message, index) => (
+                {transformedResult.messages.map((message, index) => (
                   <div key={index} className="p-4 bg-black/20 rounded-lg">
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-sm font-medium text-white/70">{message.speakerType}</span>
@@ -327,26 +432,26 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Latency Statistics</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <MetricItem label="Average" value={`${result.technical.latencyStats.avg}ms`} />
-                  <MetricItem label="Minimum" value={`${result.technical.latencyStats.min}ms`} />
-                  <MetricItem label="Maximum" value={`${result.technical.latencyStats.max}ms`} />
-                  <MetricItem label="95th Percentile" value={`${result.technical.latencyStats.p95}ms`} />
+                  <MetricItem label="Average" value={`${transformedResult.technical.latencyStats.avg}ms`} />
+                  <MetricItem label="Minimum" value={`${transformedResult.technical.latencyStats.min}ms`} />
+                  <MetricItem label="Maximum" value={`${transformedResult.technical.latencyStats.max}ms`} />
+                  <MetricItem label="95th Percentile" value={`${transformedResult.technical.latencyStats.p95}ms`} />
                 </div>
               </Card>
               
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Token Usage</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <MetricItem label="Total" value={result.technical.tokenUsage.total} />
-                  <MetricItem label="Per Message" value={result.technical.tokenUsage.perMessage} />
-                  <MetricItem label="Efficiency" value={`${(result.technical.tokenUsage.efficiency * 100).toFixed(1)}%`} />
+                  <MetricItem label="Total" value={transformedResult.technical.tokenUsage.total} />
+                  <MetricItem label="Per Message" value={transformedResult.technical.tokenUsage.perMessage} />
+                  <MetricItem label="Efficiency" value={`${(transformedResult.technical.tokenUsage.efficiency * 100).toFixed(1)}%`} />
                 </div>
               </Card>
 
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Error Analysis</h3>
                 <div className="space-y-2">
-                  {Object.entries(result.technical.errorCounts.byType).map(([type, count]) => (
+                  {Object.entries(transformedResult.technical.errorCounts.byType).map(([type, count]) => (
                     <div key={type} className="flex justify-between items-center">
                       <span className="text-white/70 capitalize">{type}</span>
                       <span className="text-white/90">{count}</span>
@@ -358,9 +463,9 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">System Metrics</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <MetricItem label="Memory Usage" value={`${result.technical.memoryUsage}MB`} />
-                  <MetricItem label="Model Temperature" value={result.technical.modelTemperature} />
-                  <MetricItem label="Avg Response Time" value={`${result.technical.avgResponseTime}ms`} />
+                  <MetricItem label="Memory Usage" value={`${transformedResult.technical.memoryUsage}MB`} />
+                  <MetricItem label="Model Temperature" value={transformedResult.technical.modelTemperature} />
+                  <MetricItem label="Avg Response Time" value={`${transformedResult.technical.avgResponseTime}ms`} />
                 </div>
               </Card>
             </div>
@@ -368,7 +473,7 @@ export default function Results() {
 
           {activeTab === 'quality' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Object.entries(result.quality).map(([key, value]) => (
+              {Object.entries(transformedResult.quality).map(([key, value]) => (
                 <Card key={key}>
                   <h3 className="text-lg font-semibold mb-4 gradient-text capitalize">
                     {key.replace(/([A-Z])/g, ' $1').trim()}
@@ -394,7 +499,7 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Intent Classification</h3>
                 <div className="space-y-2">
-                  {Object.entries(result.semantic.intentClassification).map(([intent, score]) => (
+                  {Object.entries(transformedResult.semantic.intentClassification).map(([intent, score]) => (
                     <div key={intent} className="flex justify-between items-center">
                       <span className="text-white/70 capitalize">{intent.replace(/_/g, ' ')}</span>
                       <span className="text-white/90">{(score * 100).toFixed(1)}%</span>
@@ -406,7 +511,7 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Entity Extraction</h3>
                 <div className="flex flex-wrap gap-2">
-                  {result.semantic.entityExtraction.map((entity, index) => (
+                  {transformedResult.semantic.entityExtraction.map((entity: string, index: number) => (
                     <span key={index} className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm">
                       {entity}
                     </span>
@@ -417,7 +522,7 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Topic Classification</h3>
                 <div className="flex flex-wrap gap-2">
-                  {result.semantic.topicClassification.map((topic, index) => (
+                  {transformedResult.semantic.topicClassification.map((topic: string, index: number) => (
                     <span key={index} className="px-3 py-1 rounded-full bg-secondary/20 text-secondary text-sm">
                       {topic}
                     </span>
@@ -428,7 +533,7 @@ export default function Results() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 gradient-text">Conversation Flow</h3>
                 <div className="space-y-2">
-                  {result.semantic.conversationFlow.map((step, index) => (
+                  {transformedResult.semantic.conversationFlow.map((step: string, index: number) => (
                     <div key={index} className="flex items-center space-x-2">
                       <span className="w-6 h-6 rounded-full bg-accent/20 text-accent text-sm flex items-center justify-center">
                         {index + 1}
@@ -444,7 +549,7 @@ export default function Results() {
           {activeTab === 'errors' && (
             <Card>
               <div className="space-y-4">
-                {result.errors.map((error, index) => (
+                {transformedResult.errors.map((error, index) => (
                   <div key={index} className="p-4 bg-black/20 rounded-lg border border-red-500/20">
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -475,7 +580,12 @@ export default function Results() {
   );
 }
 
-function MetricItem({ label, value }) {
+interface MetricItemProps {
+  label: string;
+  value: string | number;
+}
+
+function MetricItem({ label, value }: MetricItemProps) {
   return (
     <div>
       <div className="text-sm text-white/70">{label}</div>
@@ -484,7 +594,20 @@ function MetricItem({ label, value }) {
   );
 }
 
-function QualityMetricsCard({ quality }) {
+interface QualityMetricsProps {
+  quality: {
+    coherenceScore: number;
+    taskCompletion: number;
+    contextRetention: number;
+    naturalLanguage: number;
+    appropriateness: number;
+    engagement: number;
+    errorRecovery: number;
+    overallQuality: number;
+  };
+}
+
+function QualityMetricsCard({ quality }: QualityMetricsProps) {
   return (
     <Card>
       <h3 className="text-lg font-semibold mb-4 gradient-text">Quality Metrics</h3>
@@ -500,7 +623,29 @@ function QualityMetricsCard({ quality }) {
   );
 }
 
-function TechnicalMetricsCard({ technical }) {
+interface TechnicalMetricsProps {
+  technical: {
+    latencyStats: {
+      avg: number;
+      min: number;
+      max: number;
+      p95: number;
+    };
+    tokenUsage: {
+      total: number;
+      perMessage: number;
+      efficiency: number;
+    };
+    errorCounts: {
+      total: number;
+      byType: Record<string, number>;
+    };
+    memoryUsage: number;
+    avgResponseTime: number;
+  };
+}
+
+function TechnicalMetricsCard({ technical }: TechnicalMetricsProps) {
   return (
     <Card>
       <h3 className="text-lg font-semibold mb-4 gradient-text">Technical Performance</h3>
@@ -514,15 +659,30 @@ function TechnicalMetricsCard({ technical }) {
   );
 }
 
-function TaskSpecificCard({ taskSpecific }) {
+interface TaskSpecificProps {
+  taskSpecific: {
+    orderAccuracy: number;
+    requiredClarifications: number;
+    completionTime: number;
+    menuKnowledge: number;
+    specialRequests: number;
+    upsellAttempts: number;
+    validationResults: boolean;
+  };
+}
+
+function TaskSpecificCard({ taskSpecific }: TaskSpecificProps) {
   return (
     <Card>
       <h3 className="text-lg font-semibold mb-4 gradient-text">Task Performance</h3>
       <div className="space-y-4">
         <MetricItem label="Order Accuracy" value={`${(taskSpecific.orderAccuracy * 100).toFixed(1)}%`} />
-        <MetricItem label="Clarifications" value={taskSpecific.requiredClarifications} />
+        <MetricItem label="Required Clarifications" value={taskSpecific.requiredClarifications} />
         <MetricItem label="Completion Time" value={`${taskSpecific.completionTime}s`} />
         <MetricItem label="Menu Knowledge" value={`${(taskSpecific.menuKnowledge * 100).toFixed(1)}%`} />
+        <MetricItem label="Special Requests" value={taskSpecific.specialRequests} />
+        <MetricItem label="Upsell Attempts" value={taskSpecific.upsellAttempts} />
+        <MetricItem label="Validation" value={taskSpecific.validationResults ? "Passed" : "Failed"} />
       </div>
     </Card>
   );
