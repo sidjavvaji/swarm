@@ -74,7 +74,23 @@ interface AnalysisResults {
   conversation_flow: string[];
 }
 
+interface Conversation {
+  id: string;
+  call_sid: string;
+  status: string;
+  created_at: string;
+}
+
 interface QueryResponse {
+  id: string;
+  call_sid: string;
+  created_at: string;
+  status: string;
+  transcript: Array<{
+    role: string;
+    content: string;
+    timestamp: string;
+  }>;
   quality_metrics: QualityMetrics[];
   technical_metrics: TechnicalMetrics[];
   analysis_results: AnalysisResults[];
@@ -120,7 +136,7 @@ const MetricCard = ({ title, value, icon, description, trend, trendValue, isPerc
   title: string; 
   value: string | number; 
   icon: string;
-  description: string;
+    description: string;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   isPercentage?: boolean;
@@ -190,9 +206,11 @@ const AnalysisCard = ({ title, children }: { title: string; children: React.Reac
   </Card>
 );
 
-type Tab = 'overview' | 'quality' | 'technical' | 'conversation' | 'errors' | 'business';
+type Tab = 'overview' | 'quality' | 'technical' | 'conversation' | 'errors' | 'business' | 'script';
 
 export default function ResultsPage() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [data, setData] = useState<QueryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,58 +219,122 @@ export default function ResultsPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
 
+  // Fetch all conversations
   useEffect(() => {
-    // Redirect to login if no user
-    if (!user && !loading) {
+    if (!user) {
       router.push('/');
       return;
     }
 
+    async function fetchConversations() {
+      try {
+        const { data: conversationsData, error: conversationsError } = await supabase
+          .from('voice_conversations')
+          .select('id, call_sid, created_at, status')
+          .order('created_at', { ascending: false });
+
+        if (conversationsError) throw conversationsError;
+        setConversations(conversationsData || []);
+        
+        // Set the first conversation as selected by default
+        if (conversationsData && conversationsData.length > 0) {
+          setSelectedConversation(conversationsData[0].id);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred while fetching conversations');
+      }
+    }
+
+    fetchConversations();
+  }, [user, supabase, router]);
+
+  // Fetch metrics for selected conversation
+  useEffect(() => {
+    if (!selectedConversation || !user) return;
+
     async function fetchMetrics() {
+      setLoading(true);
       try {
         const { data, error } = await supabase
           .from('voice_conversations')
           .select(`
+            id,
+            call_sid,
+            created_at,
+            status,
+            transcript,
             quality_metrics (
-              coherence_score, task_completion_score, context_retention_score,
-              natural_language_score, appropriateness_score, engagement_score,
-              error_recovery_score, overall_quality_score, order_accuracy,
-              required_clarifications, completion_time, menu_knowledge,
-              special_requests, upsell_attempts
+              coherence_score,
+              task_completion_score,
+              context_retention_score,
+              natural_language_score,
+              appropriateness_score,
+              engagement_score,
+              error_recovery_score,
+              overall_quality_score,
+              order_accuracy,
+              required_clarifications,
+              completion_time,
+              menu_knowledge,
+              special_requests,
+              upsell_attempts
             ),
             technical_metrics (
-              avg_latency_ms, min_latency_ms, max_latency_ms, p95_latency_ms,
-              total_tokens, tokens_per_message, token_efficiency, memory_usage_mb,
-              model_temperature, conversation_type, sentiment_score, message_type,
+              avg_latency_ms,
+              min_latency_ms,
+              max_latency_ms,
+              p95_latency_ms,
+              total_tokens,
+              tokens_per_message,
+              token_efficiency,
+              memory_usage_mb,
+              model_temperature,
+              conversation_type,
+              sentiment_score,
+              message_type,
               api_errors
             ),
             analysis_results (
-              intent_classification, entity_extraction, topic_classification,
-              semantic_role_labels, conversation_flow
+              intent_classification,
+              entity_extraction,
+              topic_classification,
+              semantic_role_labels,
+              conversation_flow
             )
           `)
-          .eq('user_id', user?.id)
-          .limit(1)
+          .eq('id', selectedConversation)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error:', error);
+          throw error;
+        }
+        
+        console.log('Fetched data:', data);
+        
+        // Ensure we have all required data
+        if (!data.quality_metrics || !data.technical_metrics || !data.analysis_results) {
+          throw new Error('Missing required metrics data');
+        }
+
         setData(data as QueryResponse);
       } catch (err) {
+        console.error('Error details:', err);
         setError(err instanceof Error ? err.message : 'An error occurred while fetching metrics');
       } finally {
         setLoading(false);
       }
     }
 
-    if (user) {
-      fetchMetrics();
-    }
-  }, [user, supabase, router, loading]);
+    fetchMetrics();
+  }, [selectedConversation, user, supabase]);
 
   if (loading) return (
     <main className="min-h-screen bg-black">
       <Navigation />
-      <LoadingScreen />
+      <div className="fixed inset-0 mt-20 flex items-center justify-center">
+        <LoadingScreen />
+      </div>
     </main>
   );
 
@@ -268,34 +350,17 @@ export default function ResultsPage() {
           >
             <p className="text-red-400">{error}</p>
           </motion.div>
-        </div>
-      </div>
+            </div>
+          </div>
     </main>
   );
-
-  if (!data) return (
-    <main className="min-h-screen bg-black">
-      <Navigation />
-      <div className="pt-32 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/5 border border-white/10 rounded-xl p-6"
-          >
-            <p className="text-white/70">No metrics available</p>
-          </motion.div>
-        </div>
-      </div>
-    </main>
-  );
-
-  const quality = data.quality_metrics[0];
-  const technical = data.technical_metrics[0];
-  const analysis = data.analysis_results[0];
 
   const renderContent = () => {
-    if (!quality || !technical || !analysis) return null;
+    if (!data || !data.quality_metrics[0] || !data.technical_metrics[0] || !data.analysis_results[0]) return null;
+
+    const quality = data.quality_metrics[0];
+    const technical = data.technical_metrics[0];
+    const analysis = data.analysis_results[0];
 
     switch (activeTab) {
       case 'overview':
@@ -477,7 +542,7 @@ export default function ResultsPage() {
               <Card>
                 <h3 className="text-lg font-semibold mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
                   Conversation Flow
-                </h3>
+                  </h3>
                 <div className="space-y-2">
                   {analysis.conversation_flow.map((flow, index) => (
                     <div key={index} className="text-white/70 text-sm">
@@ -555,6 +620,24 @@ export default function ResultsPage() {
             </MetricSection>
           </>
         );
+
+      case 'script':
+        return (
+          <>
+            <MetricSection 
+              title="Conversation Script"
+              subtitle="Raw transcript data"
+            >
+              <div className="col-span-3">
+              <Card>
+                  <pre className="text-white/90 whitespace-pre-wrap overflow-auto">
+                    {JSON.stringify(data.transcript, null, 2)}
+                  </pre>
+                </Card>
+              </div>
+            </MetricSection>
+          </>
+        );
     }
   };
 
@@ -570,7 +653,7 @@ export default function ResultsPage() {
                opacity: 0.5
              }} />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/90 to-black" />
-      </div>
+                    </div>
 
       <div className="pt-32 px-4 pb-16">
         <div className="max-w-7xl mx-auto">
@@ -586,6 +669,26 @@ export default function ResultsPage() {
             <p className="text-white text-lg mb-8">
               Comprehensive analysis of your voice AI performance metrics
             </p>
+
+            {/* Conversation Selector */}
+            {conversations.length > 0 && (
+              <div className="mb-8">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Select Conversation
+                </label>
+                <select
+                  value={selectedConversation || ''}
+                  onChange={(e) => setSelectedConversation(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-black/40 border border-white/30 text-white focus:border-white/60 focus:ring-1 focus:ring-white/60"
+                >
+                  {conversations.map((conv) => (
+                    <option key={conv.id} value={conv.id} className="bg-black">
+                      {`Call ${conv.call_sid} (${new Date(conv.created_at).toLocaleString()}) - ${conv.status}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Enhanced Navigation Tabs */}
             <div className="flex flex-wrap gap-2 p-2 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
@@ -607,12 +710,15 @@ export default function ResultsPage() {
               <TabButton active={activeTab === 'business'} onClick={() => setActiveTab('business')} icon="💼">
                 Business Impact
               </TabButton>
-            </div>
+              <TabButton active={activeTab === 'script'} onClick={() => setActiveTab('script')} icon="📝">
+                Conversation Script
+              </TabButton>
+                      </div>
           </motion.div>
 
           {/* Enhanced Content */}
           <AnimatePresence mode="wait">
-            {renderContent()}
+            {data && renderContent()}
           </AnimatePresence>
         </div>
       </div>

@@ -285,6 +285,11 @@ export default function CreateTest() {
       // Create simulation
       const simulation = await database.createSimulation(testConfig.id);
 
+      // Trigger the backend to start running calls
+      await fetch('https://swarm-backend-new.onrender.com/execute_large_calls?to_number=+18449514228&num_calls=3', {
+        method: 'POST',
+      });
+
       // Show success message
       setShowSuccess(true);
       
