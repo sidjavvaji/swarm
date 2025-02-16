@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Navigation from './components/Navigation';
 import { useAuth } from './context/AuthContext';
 import { FeatureCard, StatCard } from './components/Card';
+import Link from 'next/link';
 
 const GradientLight = () => (
   <div className="fixed inset-0 pointer-events-none">
@@ -21,7 +22,7 @@ const GradientLight = () => (
 export default function Home() {
   const router = useRouter();
   const { user, signInWithGoogle } = useAuth();
-  const [activeSection, setActiveSection] = useState('home');
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleStartTesting = () => {
     if (user) {
@@ -49,8 +50,8 @@ export default function Home() {
                 Scale Your Voice AI Testing
               </span>
             </h1>
-            <p className="text-xl text-white/70 mb-12 max-w-3xl mx-auto">
-              Simulate millions of voice interactions without the overhead. Get actionable insights faster.
+            <p className="text-white/70 mb-4">
+              Let&apos;s revolutionize your voice AI testing
             </p>
             <div className="flex justify-center">
               <motion.button

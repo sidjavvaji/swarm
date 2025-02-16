@@ -1,6 +1,5 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { TestConfig } from '../types/test-config';
-import { SimulationResult } from '../types/simulation-result';
 
 const supabase = createClientComponentClient();
 
@@ -17,6 +16,7 @@ export const database = {
         simultaneous_conversations: config.basics.simultaneous,
         duration_minutes: config.basics.duration,
         environment: config.basics.environment,
+        twilio_number: config.basics.twilio_number,
         accent_types: config.customer.accents,
         speaking_pace: config.customer.pace,
         background_noise: config.customer.noise,

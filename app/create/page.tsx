@@ -15,6 +15,7 @@ interface TestConfig {
     simultaneous: number;
     duration: number;
     environment: 'production' | 'staging';
+    twilio_number: string;
   };
   customer: {
     accents: string[];
@@ -182,7 +183,8 @@ export default function CreateTest() {
       name: '',
       simultaneous: 1,
       duration: 2,
-      environment: 'staging'
+      environment: 'staging',
+      twilio_number: ''
     },
     customer: {
       accents: ['American'],
@@ -230,6 +232,8 @@ export default function CreateTest() {
 
     // Validate basics
     if (!config.basics.name) errors.push('Test name is required');
+    if (!config.basics.twilio_number) errors.push('Twilio number is required');
+    if (!config.basics.twilio_number.match(/^\+\d{10,15}$/)) errors.push('Invalid Twilio number format (should be like +1234567890)');
     if (config.basics.simultaneous < 1) errors.push('Must have at least 1 simultaneous conversation');
     if (config.basics.duration < 1) errors.push('Duration must be at least 1 minute');
     if (!config.basics.environment) errors.push('Environment must be selected');
@@ -326,6 +330,15 @@ export default function CreateTest() {
                   onChange={e => setConfig({
                     ...config,
                     basics: { ...config.basics, name: e.target.value }
+                  })}
+                />
+                <InputField
+                  label="Twilio Number"
+                  value={config.basics.twilio_number}
+                  placeholder="e.g., +1234567890"
+                  onChange={e => setConfig({
+                    ...config,
+                    basics: { ...config.basics, twilio_number: e.target.value }
                   })}
                 />
                 <Slider
@@ -595,7 +608,7 @@ export default function CreateTest() {
                 <div className="bg-surface-light p-6 rounded-2xl max-w-md w-full mx-4">
                   <h3 className="text-xl font-semibold mb-4 gradient-text">Confirm Test Creation</h3>
                   <p className="text-white/70 mb-4">
-                    Please type "Create Test" to confirm you want to create the test with the current configuration. This action may be computationally expensive.
+                    Please type &quot;Create Test&quot; to confirm you want to create the test with the current configuration. This action may be computationally expensive.
                   </p>
                   <input
                     type="text"

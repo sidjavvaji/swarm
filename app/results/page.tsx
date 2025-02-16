@@ -26,6 +26,30 @@ interface QualityMetrics {
   upsell_attempts: number;
 }
 
+interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+interface IntentClassification {
+  intent: string;
+  confidence: number;
+  entities?: Record<string, unknown>;
+}
+
+interface EntityExtraction {
+  entity: string;
+  value: string;
+  confidence: number;
+}
+
+interface SemanticRoleLabel {
+  role: string;
+  text: string;
+  confidence: number;
+}
+
 interface TechnicalMetrics {
   avg_latency_ms: number;
   min_latency_ms: number;
@@ -39,14 +63,14 @@ interface TechnicalMetrics {
   conversation_type: string;
   sentiment_score: number;
   message_type: string;
-  api_errors: any;
+  api_errors: ApiError[];
 }
 
 interface AnalysisResults {
-  intent_classification: any;
-  entity_extraction: any;
+  intent_classification: IntentClassification[];
+  entity_extraction: EntityExtraction[];
   topic_classification: string[];
-  semantic_role_labels: any;
+  semantic_role_labels: SemanticRoleLabel[];
   conversation_flow: string[];
 }
 
@@ -102,29 +126,31 @@ const MetricCard = ({ title, value, icon, description, trend, trendValue, isPerc
   isPercentage?: boolean;
 }) => (
   <Card hover={true}>
-    <div className="flex items-start justify-between mb-4">
-      <div className="flex-1">
-        <h3 className="text-sm font-medium text-white mb-1">{title}</h3>
-        <p className="text-3xl font-semibold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-          {typeof value === 'number' 
-            ? (isPercentage ? formatPercent(value) : formatDecimal(value))
-            : value}
-        </p>
-        {trend && trendValue && (
-          <div className={`flex items-center gap-1 mt-2 text-sm ${
-            trend === 'up' ? 'text-green-400' : 
-            trend === 'down' ? 'text-red-400' : 
-            'text-white/60'
-          }`}>
-            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'} {trendValue}
-          </div>
-        )}
+    <div className="h-full flex flex-col">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-white/90 mb-1">{title}</h3>
+          <p className="text-3xl font-semibold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+            {typeof value === 'number' 
+              ? (isPercentage ? formatPercent(value) : formatDecimal(value))
+              : value}
+          </p>
+          {trend && trendValue && (
+            <div className={`flex items-center gap-1 mt-2 text-sm ${
+              trend === 'up' ? 'text-green-400' : 
+              trend === 'down' ? 'text-red-400' : 
+              'text-white/60'
+            }`}>
+              {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'} {trendValue}
+            </div>
+          )}
+        </div>
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center">
+          <span className="text-2xl">{icon}</span>
+        </div>
       </div>
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center">
-        <span className="text-2xl">{icon}</span>
-      </div>
+      <p className="text-sm text-white/80 mt-auto">{description}</p>
     </div>
-    <p className="text-sm text-white">{description}</p>
   </Card>
 );
 
@@ -137,17 +163,17 @@ const MetricSection = ({ title, subtitle, children }: {
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, y: -20 }}
-    className="mb-12"
+    className="mb-12 w-full"
   >
     <div className="mb-6">
       <h2 className="text-2xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
         {title}
       </h2>
       {subtitle && (
-        <p className="text-white mt-2">{subtitle}</p>
+        <p className="text-white/80 mt-2">{subtitle}</p>
       )}
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
       {children}
     </div>
   </motion.div>
@@ -221,7 +247,7 @@ export default function ResultsPage() {
     if (user) {
       fetchMetrics();
     }
-  }, [user, supabase, router]);
+  }, [user, supabase, router, loading]);
 
   if (loading) return (
     <main className="min-h-screen bg-black">
@@ -285,7 +311,6 @@ export default function ResultsPage() {
                 icon="⭐"
                 description="Overall quality score of the conversation"
                 trend="up"
-                trendValue="+5.2% from last test"
                 isPercentage={true}
               />
               <MetricCard
@@ -294,7 +319,6 @@ export default function ResultsPage() {
                 icon="🎯"
                 description="Percentage of orders processed correctly"
                 trend="up"
-                trendValue="+3.1% from last test"
                 isPercentage={true}
               />
               <MetricCard
@@ -303,7 +327,6 @@ export default function ResultsPage() {
                 icon="⚡"
                 description="Average response time"
                 trend="down"
-                trendValue="-12.5% from last test"
               />
             </MetricSection>
 
